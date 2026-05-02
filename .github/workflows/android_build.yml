@@ -34,12 +34,10 @@ jobs:
       - name: Analyze project
         run: flutter analyze --no-fatal-infos
 
-      # Decode & write keystore from GitHub Secret
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/neonrush-release.keystore
 
-      # Write key.properties so Gradle picks up signing config
       - name: Write key.properties
         run: |
           cat > android/key.properties << PROPS
@@ -50,23 +48,23 @@ jobs:
           PROPS
 
       - name: Build signed APK
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --flavor production --release --split-per-abi
 
       - name: Build signed App Bundle (AAB)
-        run: flutter build appbundle --release
+        run: flutter build appbundle --flavor production --release
 
       - name: Upload signed APKs
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/apk/production/release/*.apk
           retention-days: 30
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-aab
-          path: build/app/outputs/bundle/release/*.aab
+          path: build/app/outputs/bundle/productionRelease/*.aab
           retention-days: 30
 
   deploy:
@@ -84,7 +82,7 @@ jobs:
       - name: List build output
         run: ls -lh aab/
 
-      # Uncomment below when ready to push to Play Store via Fastlane / supply
+      # Uncomment when ready for Play Store
       # - name: Upload to Play Store (Internal Track)
       #   uses: r0adkll/upload-google-play@v1
       #   with:

@@ -1,15 +1,17 @@
-name: iOS CI/CD — Unsigned Release (CI Safe)
+name: iOS CI/CD — Disabled Until Ready
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      enabled:
+        description: 'Set to true to run iOS build'
+        required: true
+        default: 'false'
 
 jobs:
   build:
     runs-on: macos-latest
+    if: ${{ github.event.inputs.enabled == 'true' }}
 
     steps:
       - name: Checkout code
@@ -38,7 +40,7 @@ jobs:
           cd ios
           pod install --repo-update
 
-      - name: Build iOS (no codesign — CI safe)
+      - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
 
       - name: Package unsigned IPA
@@ -54,91 +56,3 @@ jobs:
           name: ios-unsigned-ipa
           path: build/ios/ipa/*.ipa
           retention-days: 30
-
-  # ─── Signed Export (main branch only) ──────────────────────────────────────
-  # Requires Apple Developer secrets. Add these to GitHub Secrets when ready:
-  #   APPLE_CERTIFICATE_BASE64   → .p12 cert encoded as base64
-  #   APPLE_CERTIFICATE_PASSWORD → .p12 export password
-  #   APPLE_PROVISIONING_PROFILE → .mobileprovision encoded as base64
-  #   APPLE_TEAM_ID              → Your 10-char Apple Team ID
-  # ───────────────────────────────────────────────────────────────────────────
-  export-signed:
-    needs: build
-    runs-on: macos-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: 'stable'
-          cache: true
-
-      - name: Get Flutter dependencies
-        run: flutter pub get
-
-      - name: Install CocoaPods
-        run: |
-          cd ios
-          pod install --repo-update
-
-      - name: Import signing certificate
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          CERT_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
-          security create-keychain -p "temp_keychain_password" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "temp_keychain_password" "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -P "$CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-
-      - name: Install provisioning profile
-        env:
-          PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
-        run: |
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
-
-      - name: Write ExportOptions.plist
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          cat > ios/ExportOptions.plist << PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>${APPLE_TEAM_ID}</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>com.chastechgroup.neonrush</key>
-              <string>NeonRush Distribution</string>
-            </dict>
-          </dict>
-          </plist>
-          PLIST
-
-      - name: Build & archive signed IPA
-        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
-
-      - name: Upload signed IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-signed-ipa
-          path: build/ios/ipa/*.ipa
-          retention-days: 30
-

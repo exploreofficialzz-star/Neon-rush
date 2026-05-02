@@ -206,10 +206,10 @@ class AdMobService {
     _appOpenAd?.show();
   }
 
-  // Aggressive interstitial strategy: show every 3 runs
+  // Show interstitial every 3 completed games (not runs/restarts)
   bool shouldShowInterstitial() {
-    final runCount = _storage.getRunCount();
-    return runCount > 0 && runCount % 3 == 0;
+    final gamesPlayed = _storage.getGamesPlayed();
+    return gamesPlayed > 0 && gamesPlayed % 3 == 0;
   }
 
   void dispose() {

@@ -477,11 +477,6 @@ class _GameScreenState extends State<GameScreen>
     _storage.incrementGamesPlayed();
     _storage.incrementRunCount();
     
-    // Show interstitial every 3 runs
-    if (_adMob.shouldShowInterstitial()) {
-      _adMob.showInterstitialAd();
-    }
-    
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(

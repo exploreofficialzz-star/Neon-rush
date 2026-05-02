@@ -199,7 +199,6 @@ class _MainMenuState extends State<MainMenu> with TickerProviderStateMixin {
                 icon: Icons.play_arrow_rounded,
                 onTap: () {
                   _audio.playSwipe();
-                  _adMob.showInterstitialAd(onComplete: () {});
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const GameScreen()),
                   ).then((_) => _loadData());

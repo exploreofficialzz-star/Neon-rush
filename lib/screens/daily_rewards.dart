@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
 import '../services/audio_service.dart';
@@ -37,7 +36,6 @@ class _DailyRewardsScreenState extends State<DailyRewardsScreen>
 
   void _loadData() {
     final lastReward = _storage.getLastDailyReward();
-    final today = DateTime.now().toIso8601String().split('T')[0];
     
     int streak = _storage.getDailyStreak();
     
@@ -155,7 +153,6 @@ class _DailyRewardsScreenState extends State<DailyRewardsScreen>
                     itemBuilder: (context, index) {
                       final isCurrent = index == _streak;
                       final isPast = index < _streak;
-                      final isFuture = index > _streak;
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),

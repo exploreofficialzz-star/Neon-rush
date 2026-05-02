@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'services/storage_service.dart';
+import 'storage_service.dart';
 
 class AdMobService {
   static final AdMobService _instance = AdMobService._internal();
@@ -110,16 +111,21 @@ class AdMobService {
 
   void showInterstitialAd({VoidCallback? onComplete}) {
     if (_isInterstitialAdLoaded && _interstitialAd != null) {
-      _interstitialAd!.show();
-      _storage.incrementInterstitialCount();
-      if (onComplete != null) {
-        _interstitialAd!.fullScreenContentCallback?.onAdDismissedFullScreenContent = (ad) {
+      _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
           _isInterstitialAdLoaded = false;
           loadInterstitialAd();
-          onComplete();
-        };
-      }
+          onComplete?.call();
+        },
+        onAdFailedToShowFullScreenContent: (ad, error) {
+          ad.dispose();
+          _isInterstitialAdLoaded = false;
+          loadInterstitialAd();
+        },
+      );
+      _interstitialAd!.show();
+      _storage.incrementInterstitialCount();
     } else {
       onComplete?.call();
       loadInterstitialAd();
@@ -158,17 +164,24 @@ class AdMobService {
 
   void showRewardedAd({required Function(int amount) onReward, VoidCallback? onDismiss}) {
     if (_isRewardedAdLoaded && _rewardedAd != null) {
+      _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+        onAdDismissedFullScreenContent: (ad) {
+          ad.dispose();
+          _isRewardedAdLoaded = false;
+          loadRewardedAd();
+          onDismiss?.call();
+        },
+        onAdFailedToShowFullScreenContent: (ad, error) {
+          ad.dispose();
+          _isRewardedAdLoaded = false;
+          loadRewardedAd();
+        },
+      );
       _rewardedAd!.show(
         onUserEarnedReward: (ad, reward) {
           onReward(reward.amount.toInt());
         },
       );
-      _rewardedAd!.fullScreenContentCallback?.onAdDismissedFullScreenContent = (ad) {
-        ad.dispose();
-        _isRewardedAdLoaded = false;
-        loadRewardedAd();
-        onDismiss?.call();
-      };
     } else {
       onDismiss?.call();
       loadRewardedAd();

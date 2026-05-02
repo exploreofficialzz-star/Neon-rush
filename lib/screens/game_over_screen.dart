@@ -1,6 +1,4 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
-import '../services/storage_service.dart';
 import '../services/audio_service.dart';
 import '../services/admob_service.dart';
 import 'game_screen.dart';
@@ -28,7 +26,6 @@ class GameOverScreen extends StatefulWidget {
 
 class _GameOverScreenState extends State<GameOverScreen>
     with SingleTickerProviderStateMixin {
-  final StorageService _storage = StorageService();
   final AudioService _audio = AudioService();
   final AdMobService _adMob = AdMobService();
 

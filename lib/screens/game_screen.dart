@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/storage_service.dart';
 import '../services/audio_service.dart';
 import '../services/admob_service.dart';
@@ -68,7 +68,6 @@ class _GameScreenState extends State<GameScreen>
   double _distance = 0;
   int _score = 0;
   int _coins = 0;
-  int _gems = 0;
   double _multiplier = 1.0;
   
   // Power-up timers
@@ -91,7 +90,6 @@ class _GameScreenState extends State<GameScreen>
   double _slideProgress = 0;
   double _laneSwitchProgress = 0;
   Lane? _targetLane;
-  double _worldOffset = 0;
   
   // Spawn timing
   double _nextObstacleZ = 80;
@@ -127,7 +125,6 @@ class _GameScreenState extends State<GameScreen>
       _distance = 0;
       _score = 0;
       _coins = 0;
-      _gems = 0;
       _multiplier = 1.0;
       _magnetTime = 0;
       _shieldTime = 0;
@@ -144,7 +141,6 @@ class _GameScreenState extends State<GameScreen>
       _slideProgress = 0;
       _laneSwitchProgress = 0;
       _targetLane = null;
-      _worldOffset = 0;
       _nextObstacleZ = 100;
       _nextCoinZ = 30;
       _nextPowerUpZ = 250;
@@ -171,7 +167,6 @@ class _GameScreenState extends State<GameScreen>
       // Move world
       final moveAmount = _gameSpeed * 0.5;
       _distance += moveAmount;
-      _worldOffset += moveAmount;
       
       // Score from distance
       _score += (moveAmount * _multiplier).toInt();
@@ -365,8 +360,7 @@ class _GameScreenState extends State<GameScreen>
   void _checkCollisions() {
     if (_hasJetpack) return; // Invincible while jetpack
     
-    final playerZ = 0.0;
-    final collisionRange = 15.0;
+    const collisionRange = 15.0;
     
     // Check obstacle collisions
     for (final obs in _obstacles) {
@@ -519,11 +513,11 @@ class _GameScreenState extends State<GameScreen>
     _audio.playSwipe();
     setState(() {
       if (_targetLane != null) {
-        if (_targetLane == Lane.center) _targetLane = Lane.left;
-        else if (_targetLane == Lane.right) _targetLane = Lane.center;
+        if (_targetLane == Lane.center) { _targetLane = Lane.left; }
+        else if (_targetLane == Lane.right) { _targetLane = Lane.center; }
       } else {
-        if (_playerLane == Lane.center) _targetLane = Lane.left;
-        else if (_playerLane == Lane.right) _targetLane = Lane.center;
+        if (_playerLane == Lane.center) { _targetLane = Lane.left; }
+        else if (_playerLane == Lane.right) { _targetLane = Lane.center; }
         _laneSwitchProgress = 0;
       }
     });
@@ -536,11 +530,11 @@ class _GameScreenState extends State<GameScreen>
     _audio.playSwipe();
     setState(() {
       if (_targetLane != null) {
-        if (_targetLane == Lane.center) _targetLane = Lane.right;
-        else if (_targetLane == Lane.left) _targetLane = Lane.center;
+        if (_targetLane == Lane.center) { _targetLane = Lane.right; }
+        else if (_targetLane == Lane.left) { _targetLane = Lane.center; }
       } else {
-        if (_playerLane == Lane.center) _targetLane = Lane.right;
-        else if (_playerLane == Lane.left) _targetLane = Lane.center;
+        if (_playerLane == Lane.center) { _targetLane = Lane.right; }
+        else if (_playerLane == Lane.left) { _targetLane = Lane.center; }
         _laneSwitchProgress = 0;
       }
     });
@@ -608,14 +602,14 @@ class _GameScreenState extends State<GameScreen>
     // z: positive = ahead of player, 0 = at player
     // Far objects (large z) appear near horizon (smaller Y)
     // Close objects (z near 0) appear near bottom (larger Y)
-    final maxDist = 300.0;
+    const maxDist = 300.0;
     final t = (1.0 - (z / maxDist)).clamp(0.0, 1.0);
     return _horizonY + t * (_screenHeight - _horizonY - 200);
   }
   
   double _getEntityScale(double z) {
     // Far objects are smaller, close objects are larger
-    final maxDist = 300.0;
+    const maxDist = 300.0;
     final t = (1.0 - (z / maxDist)).clamp(0.0, 1.0);
     return 0.2 + t * 0.8;
   }

@@ -1,5 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
-import 'services/storage_service.dart';
+import 'storage_service.dart';
 
 class AudioService {
   static final AudioService _instance = AudioService._internal();

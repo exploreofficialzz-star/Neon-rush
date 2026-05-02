@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
 import '../services/audio_service.dart';
-import '../services/admob_service.dart';
 import 'game_over_screen.dart';
 
 enum Lane { left, center, right }
@@ -52,7 +51,6 @@ class _GameScreenState extends State<GameScreen>
     with TickerProviderStateMixin {
   final StorageService _storage = StorageService();
   final AudioService _audio = AudioService();
-  final AdMobService _adMob = AdMobService();
 
   // Game state
   bool _playing = false;
@@ -595,9 +593,9 @@ class _GameScreenState extends State<GameScreen>
         _swipeRight();
       }
     } else if (vx.abs() > vy.abs()) {
-      if (vx > 0) _swipeRight(); else _swipeLeft();
+      if (vx > 0) { _swipeRight(); } else { _swipeLeft(); }
     } else {
-      if (vy < 0) _swipeUp(); else _swipeDown();
+      if (vy < 0) { _swipeUp(); } else { _swipeDown(); }
     }
   }
 

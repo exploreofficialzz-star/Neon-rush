@@ -669,6 +669,7 @@ class _GameScreenState extends State<GameScreen>
         child: Container(
           color: const Color(0xFF0A0A1A),
           child: Stack(
+            fit: StackFit.expand,
             children: [
               // Background city
               Positioned.fill(

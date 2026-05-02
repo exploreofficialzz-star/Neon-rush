@@ -89,10 +89,11 @@ class _GameScreenState extends State<GameScreen>
   double _laneSwitchProgress = 0;
   Lane? _targetLane;
 
-  // Spawn timing
-  double _nextObstacleZ = 80;
-  double _nextCoinZ = 30;
-  double _nextPowerUpZ = 200;
+  // Spawn timing — these are DISTANCE TRAVELED triggers, not z positions.
+  // Obstacle/coin/powerup always spawn at a fixed z ahead of the player.
+  double _nextObstacleDistance = 100;
+  double _nextCoinDistance = 20;
+  double _nextPowerUpDistance = 300;
   final Random _random = Random();
 
   // Swipe tracking — FIX: single pan handler, no onPanUpdate conflict
@@ -147,9 +148,9 @@ class _GameScreenState extends State<GameScreen>
       _slideProgress = 0;
       _laneSwitchProgress = 0;
       _targetLane = null;
-      _nextObstacleZ = 100;
-      _nextCoinZ = 30;
-      _nextPowerUpZ = 250;
+      _nextObstacleDistance = 100;
+      _nextCoinDistance = 20;
+      _nextPowerUpDistance = 300;
     });
 
     _audio.playBgMusic();
@@ -238,22 +239,23 @@ class _GameScreenState extends State<GameScreen>
         }
       }
 
-      // Spawn obstacles
-      if (_distance + 200 > _nextObstacleZ) {
+      // Spawn obstacles — trigger when enough distance traveled,
+      // always place obstacle at a fixed z ahead of the player.
+      if (_distance >= _nextObstacleDistance) {
         _spawnObstacle();
-        _nextObstacleZ = _distance + 60 + _random.nextDouble() * 80;
+        _nextObstacleDistance = _distance + 80 + _random.nextDouble() * 100;
       }
 
       // Spawn coins
-      if (_distance + 150 > _nextCoinZ) {
+      if (_distance >= _nextCoinDistance) {
         _spawnCoins();
-        _nextCoinZ = _distance + 40 + _random.nextDouble() * 60;
+        _nextCoinDistance = _distance + 50 + _random.nextDouble() * 60;
       }
 
       // Spawn power-ups
-      if (_distance + 300 > _nextPowerUpZ) {
+      if (_distance >= _nextPowerUpDistance) {
         _spawnPowerUp();
-        _nextPowerUpZ = _distance + 400 + _random.nextDouble() * 400;
+        _nextPowerUpDistance = _distance + 500 + _random.nextDouble() * 300;
       }
 
       // Move entities
@@ -293,20 +295,22 @@ class _GameScreenState extends State<GameScreen>
       low = true;
     }
 
+    const spawnZ = 280.0; // always spawn this far ahead of the player
+
     _obstacles.add(Obstacle(
-      z: _nextObstacleZ,
+      z: spawnZ,
       lane: lane,
       type: type,
       tall: tall,
       low: low,
     ));
 
-    // Sometimes spawn double obstacles
+    // Sometimes spawn double obstacles (only after player has warmed up)
     if (_random.nextDouble() < 0.2 && _distance > 500) {
       final otherLane =
           lanes.where((l) => l != lane).toList()[_random.nextInt(2)];
       _obstacles.add(Obstacle(
-        z: _nextObstacleZ,
+        z: spawnZ,
         lane: otherLane,
         type: ObstacleType.barrier,
         tall: false,
@@ -316,25 +320,25 @@ class _GameScreenState extends State<GameScreen>
   }
 
   void _spawnCoins() {
+    const spawnZ = 230.0;
     final pattern = _random.nextInt(3);
-    final startZ = _nextCoinZ;
 
     if (pattern == 0) {
       final lane = [Lane.left, Lane.center, Lane.right][_random.nextInt(3)];
       for (int i = 0; i < 5; i++) {
-        _coinsList.add(Coin(z: startZ + i * 15, lane: lane));
+        _coinsList.add(Coin(z: spawnZ + i * 15, lane: lane));
       }
     } else if (pattern == 1) {
       for (int i = 0; i < 3; i++) {
         for (final lane in [Lane.left, Lane.center, Lane.right]) {
-          _coinsList.add(Coin(z: startZ + i * 15, lane: lane));
+          _coinsList.add(Coin(z: spawnZ + i * 15, lane: lane));
         }
       }
     } else {
       final lane = [Lane.left, Lane.center, Lane.right][_random.nextInt(3)];
-      _coinsList.add(Coin(z: startZ, lane: lane));
-      _coinsList.add(Coin(z: startZ + 15, lane: lane));
-      _coinsList.add(Coin(z: startZ + 30, lane: lane));
+      _coinsList.add(Coin(z: spawnZ, lane: lane));
+      _coinsList.add(Coin(z: spawnZ + 15, lane: lane));
+      _coinsList.add(Coin(z: spawnZ + 30, lane: lane));
     }
   }
 
@@ -347,7 +351,7 @@ class _GameScreenState extends State<GameScreen>
     ];
     final lane = [Lane.left, Lane.center, Lane.right][_random.nextInt(3)];
     _powerUps.add(PowerUp(
-      z: _nextPowerUpZ,
+      z: 260.0,
       lane: lane,
       type: types[_random.nextInt(types.length)],
     ));

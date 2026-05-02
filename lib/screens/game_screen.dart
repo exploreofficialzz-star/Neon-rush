@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/storage_service.dart';
 import '../services/audio_service.dart';
 import '../services/admob_service.dart';
@@ -59,9 +58,10 @@ class _GameScreenState extends State<GameScreen>
   bool _playing = false;
   bool _paused = false;
   bool _gameOver = false;
+  bool _showingTutorial = false; // FIX: track tutorial separately
   PlayerState _playerState = PlayerState.running;
   Lane _playerLane = Lane.center;
-  
+
   // Game loop
   Timer? _gameTimer;
   double _gameSpeed = 12.0;
@@ -69,7 +69,7 @@ class _GameScreenState extends State<GameScreen>
   int _score = 0;
   int _coins = 0;
   double _multiplier = 1.0;
-  
+
   // Power-up timers
   double _magnetTime = 0;
   double _shieldTime = 0;
@@ -79,46 +79,54 @@ class _GameScreenState extends State<GameScreen>
   bool _hasShield = false;
   bool _hasMultiplier = false;
   bool _hasJetpack = false;
-  
+
   // Entities
   final List<Obstacle> _obstacles = [];
   final List<Coin> _coinsList = [];
   final List<PowerUp> _powerUps = [];
-  
+
   // Animation
   double _jumpProgress = 0;
   double _slideProgress = 0;
   double _laneSwitchProgress = 0;
   Lane? _targetLane;
-  
+
   // Spawn timing
   double _nextObstacleZ = 80;
   double _nextCoinZ = 30;
   double _nextPowerUpZ = 200;
   final Random _random = Random();
-  
-  // Ad banner
-  BannerAd? _bannerAd;
-  
+
+  // Swipe tracking — FIX: single pan handler, no onPanUpdate conflict
+  Offset? _panStart;
+
   // Dimensions
   late double _laneWidth;
   late double _screenHeight;
   late double _horizonY;
-  
+
   @override
   void initState() {
     super.initState();
-    _adMob.loadBannerAd((ad) {
-      setState(() => _bannerAd = ad);
-    });
-    _startGame();
+    // FIX: check tutorial BEFORE starting game — don't run timer while tutorial shows
+    _showingTutorial =
+        _storage.getFirstLaunch() && !_storage.getTutorialCompleted();
+    if (_showingTutorial) {
+      // Layout needs to build first; delay tutorial check by one frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      _startGame();
+    }
   }
-  
+
   void _startGame() {
     setState(() {
       _playing = true;
       _gameOver = false;
       _paused = false;
+      _showingTutorial = false;
       _playerState = PlayerState.running;
       _playerLane = Lane.center;
       _gameSpeed = 12.0;
@@ -145,32 +153,32 @@ class _GameScreenState extends State<GameScreen>
       _nextCoinZ = 30;
       _nextPowerUpZ = 250;
     });
-    
+
     _audio.playBgMusic();
-    
-    // Start game loop at 60 FPS
+
+    // Start game loop at ~60 FPS
     _gameTimer?.cancel();
     _gameTimer = Timer.periodic(
       const Duration(milliseconds: 16),
       (timer) => _gameLoop(),
     );
   }
-  
+
   void _gameLoop() {
     if (!_playing || _paused || _gameOver) return;
-    
+
     setState(() {
       // Increase speed over time
       _gameSpeed = 12.0 + (_distance / 2000) * 8;
       _gameSpeed = _gameSpeed.clamp(12.0, 35.0);
-      
+
       // Move world
       final moveAmount = _gameSpeed * 0.5;
       _distance += moveAmount;
-      
+
       // Score from distance
       _score += (moveAmount * _multiplier).toInt();
-      
+
       // Jetpack mode - fly over everything
       if (_hasJetpack) {
         _jetpackTime -= 0.016;
@@ -179,7 +187,7 @@ class _GameScreenState extends State<GameScreen>
           _jetpackTime = 0;
         }
       }
-      
+
       // Update power-up timers
       if (_hasMagnet) {
         _magnetTime -= 0.016;
@@ -203,7 +211,7 @@ class _GameScreenState extends State<GameScreen>
           _multiplier = 1.0;
         }
       }
-      
+
       // Update jump
       if (_playerState == PlayerState.jumping) {
         _jumpProgress += 0.06;
@@ -212,7 +220,7 @@ class _GameScreenState extends State<GameScreen>
           _playerState = PlayerState.running;
         }
       }
-      
+
       // Update slide
       if (_playerState == PlayerState.sliding) {
         _slideProgress += 0.04;
@@ -221,7 +229,7 @@ class _GameScreenState extends State<GameScreen>
           _playerState = PlayerState.running;
         }
       }
-      
+
       // Update lane switch
       if (_targetLane != null) {
         _laneSwitchProgress += 0.12;
@@ -231,51 +239,50 @@ class _GameScreenState extends State<GameScreen>
           _laneSwitchProgress = 0;
         }
       }
-      
+
       // Spawn obstacles
       if (_distance + 200 > _nextObstacleZ) {
         _spawnObstacle();
         _nextObstacleZ = _distance + 60 + _random.nextDouble() * 80;
       }
-      
+
       // Spawn coins
       if (_distance + 150 > _nextCoinZ) {
         _spawnCoins();
         _nextCoinZ = _distance + 40 + _random.nextDouble() * 60;
       }
-      
+
       // Spawn power-ups
       if (_distance + 300 > _nextPowerUpZ) {
         _spawnPowerUp();
         _nextPowerUpZ = _distance + 400 + _random.nextDouble() * 400;
       }
-      
+
       // Move entities
       _moveEntities();
-      
+
       // Check collisions
       _checkCollisions();
-      
+
       // Clean up old entities
       _cleanupEntities();
-      
+
       // Magnet effect - pull coins
       if (_hasMagnet) {
         _magnetCoins();
       }
     });
   }
-  
+
   void _spawnObstacle() {
     final lanes = [Lane.left, Lane.center, Lane.right];
     final lane = lanes[_random.nextInt(3)];
-    
-    // Choose obstacle type
+
     final rand = _random.nextDouble();
     ObstacleType type;
     bool tall = false;
     bool low = false;
-    
+
     if (rand < 0.5) {
       type = ObstacleType.barrier;
       tall = _random.nextBool();
@@ -287,7 +294,7 @@ class _GameScreenState extends State<GameScreen>
       type = ObstacleType.drone;
       low = true;
     }
-    
+
     _obstacles.add(Obstacle(
       z: _nextObstacleZ,
       lane: lane,
@@ -295,10 +302,11 @@ class _GameScreenState extends State<GameScreen>
       tall: tall,
       low: low,
     ));
-    
+
     // Sometimes spawn double obstacles
     if (_random.nextDouble() < 0.2 && _distance > 500) {
-      final otherLane = lanes.where((l) => l != lane).toList()[_random.nextInt(2)];
+      final otherLane =
+          lanes.where((l) => l != lane).toList()[_random.nextInt(2)];
       _obstacles.add(Obstacle(
         z: _nextObstacleZ,
         lane: otherLane,
@@ -308,35 +316,37 @@ class _GameScreenState extends State<GameScreen>
       ));
     }
   }
-  
+
   void _spawnCoins() {
     final pattern = _random.nextInt(3);
     final startZ = _nextCoinZ;
-    
+
     if (pattern == 0) {
-      // Single lane line
       final lane = [Lane.left, Lane.center, Lane.right][_random.nextInt(3)];
       for (int i = 0; i < 5; i++) {
         _coinsList.add(Coin(z: startZ + i * 15, lane: lane));
       }
     } else if (pattern == 1) {
-      // All lanes
       for (int i = 0; i < 3; i++) {
         for (final lane in [Lane.left, Lane.center, Lane.right]) {
           _coinsList.add(Coin(z: startZ + i * 15, lane: lane));
         }
       }
     } else {
-      // Arc pattern
       final lane = [Lane.left, Lane.center, Lane.right][_random.nextInt(3)];
       _coinsList.add(Coin(z: startZ, lane: lane));
       _coinsList.add(Coin(z: startZ + 15, lane: lane));
       _coinsList.add(Coin(z: startZ + 30, lane: lane));
     }
   }
-  
+
   void _spawnPowerUp() {
-    final types = [PowerUpType.magnet, PowerUpType.jetpack, PowerUpType.shield, PowerUpType.multiplier];
+    final types = [
+      PowerUpType.magnet,
+      PowerUpType.jetpack,
+      PowerUpType.shield,
+      PowerUpType.multiplier
+    ];
     final lane = [Lane.left, Lane.center, Lane.right][_random.nextInt(3)];
     _powerUps.add(PowerUp(
       z: _nextPowerUpZ,
@@ -344,7 +354,7 @@ class _GameScreenState extends State<GameScreen>
       type: types[_random.nextInt(types.length)],
     ));
   }
-  
+
   void _moveEntities() {
     for (final obs in _obstacles) {
       obs.z -= _gameSpeed * 0.5;
@@ -356,20 +366,18 @@ class _GameScreenState extends State<GameScreen>
       pu.z -= _gameSpeed * 0.5;
     }
   }
-  
+
   void _checkCollisions() {
-    if (_hasJetpack) return; // Invincible while jetpack
-    
+    if (_hasJetpack) return;
+
     const collisionRange = 15.0;
-    
-    // Check obstacle collisions
+
     for (final obs in _obstacles) {
       if (!obs.active) continue;
       if (obs.z.abs() < collisionRange && _isSameLane(obs.lane)) {
-        // Check if player can avoid
         if (obs.tall && _playerState == PlayerState.jumping) continue;
         if (obs.low && _playerState == PlayerState.sliding) continue;
-        
+
         if (_hasShield) {
           _hasShield = false;
           _shieldTime = 0;
@@ -377,13 +385,12 @@ class _GameScreenState extends State<GameScreen>
           _audio.playCrash();
           continue;
         }
-        
+
         _triggerGameOver();
         return;
       }
     }
-    
-    // Check coin collection
+
     for (final coin in _coinsList) {
       if (coin.collected) continue;
       if (coin.z.abs() < collisionRange && _isSameLane(coin.lane)) {
@@ -392,8 +399,7 @@ class _GameScreenState extends State<GameScreen>
         _audio.playCoin();
       }
     }
-    
-    // Check power-up collection
+
     for (final pu in _powerUps) {
       if (!pu.active) continue;
       if (pu.z.abs() < collisionRange && _isSameLane(pu.lane)) {
@@ -402,26 +408,24 @@ class _GameScreenState extends State<GameScreen>
       }
     }
   }
-  
+
   bool _isSameLane(Lane lane) {
     if (_targetLane != null) {
-      // Interpolate lane position
       final currentIndex = _playerLane.index;
       final targetIndex = _targetLane!.index;
       final progress = _laneSwitchProgress;
-      final effectiveIndex = currentIndex + (targetIndex - currentIndex) * progress;
+      final effectiveIndex =
+          currentIndex + (targetIndex - currentIndex) * progress;
       return (effectiveIndex - lane.index).abs() < 0.5;
     }
     return _playerLane == lane;
   }
-  
+
   void _magnetCoins() {
     for (final coin in _coinsList) {
       if (coin.collected) continue;
       if (coin.z > 0 && coin.z < 100) {
-        // Pull coin to player's lane
         if (coin.lane != _playerLane) {
-          // Visual only - collect if close enough
           if (coin.z < 30) {
             coin.collected = true;
             _coins++;
@@ -431,13 +435,13 @@ class _GameScreenState extends State<GameScreen>
       }
     }
   }
-  
+
   void _cleanupEntities() {
     _obstacles.removeWhere((o) => o.z < -50);
     _coinsList.removeWhere((c) => c.collected || c.z < -50);
     _powerUps.removeWhere((p) => !p.active || p.z < -50);
   }
-  
+
   void _activatePowerUp(PowerUpType type) {
     _audio.playPowerUp();
     switch (type) {
@@ -462,49 +466,52 @@ class _GameScreenState extends State<GameScreen>
         break;
     }
   }
-  
+
+  // FIX: split into sync stop + async save+navigate to ensure stats are
+  // written before the game over screen reads them.
   void _triggerGameOver() {
     _gameOver = true;
     _playing = false;
     _gameTimer?.cancel();
     _audio.playCrash();
     _audio.stopBgMusic();
-    
-    // Save stats
-    _storage.setHighScore(_score);
-    _storage.addTotalScore(_score);
-    _storage.addCoins(_coins);
-    _storage.incrementGamesPlayed();
-    _storage.incrementRunCount();
-    
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => GameOverScreen(
-              score: _score,
-              coins: _coins,
-              highScore: _storage.getHighScore(),
-              onRestart: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const GameScreen()),
-                );
-              },
-              onMainMenu: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ),
-        );
-      }
-    });
+    _saveStatsAndNavigate();
   }
-  
-  // Controls
+
+  Future<void> _saveStatsAndNavigate() async {
+    await _storage.setHighScore(_score);
+    await _storage.addTotalScore(_score);
+    await _storage.addCoins(_coins);
+    await _storage.incrementGamesPlayed();
+    await _storage.incrementRunCount();
+
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => GameOverScreen(
+          score: _score,
+          coins: _coins,
+          highScore: _storage.getHighScore(),
+          onRestart: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const GameScreen()),
+            );
+          },
+          onMainMenu: () {
+            Navigator.of(context).pop();
+          },
+        ),
+      ),
+    );
+  }
+
+  // Controls — FIX: clean guard logic, no duplicate triggers
   void _swipeLeft() {
-    if (!_playing || _gameOver) return;
+    if (!_playing || _gameOver || _paused) return;
     if (_playerLane == Lane.left && _targetLane == null) return;
-    
+
     _audio.playSwipe();
     setState(() {
       if (_targetLane != null) {
@@ -517,11 +524,11 @@ class _GameScreenState extends State<GameScreen>
       }
     });
   }
-  
+
   void _swipeRight() {
-    if (!_playing || _gameOver) return;
+    if (!_playing || _gameOver || _paused) return;
     if (_playerLane == Lane.right && _targetLane == null) return;
-    
+
     _audio.playSwipe();
     setState(() {
       if (_targetLane != null) {
@@ -534,11 +541,11 @@ class _GameScreenState extends State<GameScreen>
       }
     });
   }
-  
+
   void _swipeUp() {
-    if (!_playing || _gameOver) return;
+    if (!_playing || _gameOver || _paused) return;
     if (_playerState == PlayerState.jumping || _hasJetpack) return;
-    
+
     _audio.playJump();
     setState(() {
       _playerState = PlayerState.jumping;
@@ -546,11 +553,11 @@ class _GameScreenState extends State<GameScreen>
       _slideProgress = 0;
     });
   }
-  
+
   void _swipeDown() {
-    if (!_playing || _gameOver) return;
+    if (!_playing || _gameOver || _paused) return;
     if (_playerState == PlayerState.sliding || _hasJetpack) return;
-    
+
     _audio.playSlide();
     setState(() {
       _playerState = PlayerState.sliding;
@@ -558,7 +565,42 @@ class _GameScreenState extends State<GameScreen>
       _jumpProgress = 0;
     });
   }
-  
+
+  // FIX: unified pan handler — fires ONCE per gesture, no conflicts, no
+  // double-fire. Handles both taps (low velocity = zone tap) and swipes.
+  void _handlePanStart(DragStartDetails details) {
+    _panStart = details.localPosition;
+  }
+
+  void _handlePanEnd(DragEndDetails details, Size size) {
+    if (_panStart == null) return;
+    final start = _panStart!;
+    _panStart = null;
+
+    final vx = details.velocity.pixelsPerSecond.dx;
+    final vy = details.velocity.pixelsPerSecond.dy;
+    const minSwipeVelocity = 300.0;
+
+    if (vx.abs() < minSwipeVelocity && vy.abs() < minSwipeVelocity) {
+      // Low velocity = treat as zone tap
+      final dx = start.dx;
+      final dy = start.dy;
+      if (dy < size.height * 0.4) {
+        _swipeUp();
+      } else if (dy > size.height * 0.7) {
+        _swipeDown();
+      } else if (dx < size.width * 0.3) {
+        _swipeLeft();
+      } else if (dx > size.width * 0.7) {
+        _swipeRight();
+      }
+    } else if (vx.abs() > vy.abs()) {
+      if (vx > 0) _swipeRight(); else _swipeLeft();
+    } else {
+      if (vy < 0) _swipeUp(); else _swipeDown();
+    }
+  }
+
   double _getLaneX(Lane lane, double laneWidth, double centerX) {
     switch (lane) {
       case Lane.left:
@@ -569,7 +611,7 @@ class _GameScreenState extends State<GameScreen>
         return centerX + laneWidth;
     }
   }
-  
+
   double _getPlayerX(double laneWidth, double centerX) {
     if (_targetLane != null) {
       final currentX = _getLaneX(_playerLane, laneWidth, centerX);
@@ -578,7 +620,7 @@ class _GameScreenState extends State<GameScreen>
     }
     return _getLaneX(_playerLane, laneWidth, centerX);
   }
-  
+
   double _getPlayerY() {
     if (_hasJetpack) {
       return _horizonY - 120 - (_jetpackTime > 0 ? sin(_jetpackTime * 3) * 10 : 0);
@@ -592,29 +634,26 @@ class _GameScreenState extends State<GameScreen>
     }
     return _horizonY - 20;
   }
-  
+
   double _getEntityScreenY(double z) {
-    // z: positive = ahead of player, 0 = at player
-    // Far objects (large z) appear near horizon (smaller Y)
-    // Close objects (z near 0) appear near bottom (larger Y)
     const maxDist = 300.0;
     final t = (1.0 - (z / maxDist)).clamp(0.0, 1.0);
     return _horizonY + t * (_screenHeight - _horizonY - 200);
   }
-  
+
   double _getEntityScale(double z) {
-    // Far objects are smaller, close objects are larger
     const maxDist = 300.0;
     final t = (1.0 - (z / maxDist)).clamp(0.0, 1.0);
     return 0.2 + t * 0.8;
   }
-  
+
   @override
   void dispose() {
+    // FIX: always cancel timer on dispose — prevents setState after unmount
     _gameTimer?.cancel();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -622,31 +661,13 @@ class _GameScreenState extends State<GameScreen>
     _screenHeight = size.height;
     _horizonY = size.height * 0.35;
     final centerX = size.width / 2;
-    
+
     return Scaffold(
       body: GestureDetector(
-        onTapUp: (details) {
-          final dx = details.localPosition.dx;
-          final dy = details.localPosition.dy;
-          final width = size.width;
-          final height = size.height;
-          
-          if (dy < height * 0.4) {
-            _swipeUp();
-          } else if (dy > height * 0.7) {
-            _swipeDown();
-          } else if (dx < width * 0.3) {
-            _swipeLeft();
-          } else if (dx > width * 0.7) {
-            _swipeRight();
-          }
-        },
-        onPanUpdate: (details) {
-          if (details.delta.dx > 15) _swipeRight();
-          if (details.delta.dx < -15) _swipeLeft();
-          if (details.delta.dy < -20) _swipeUp();
-          if (details.delta.dy > 20) _swipeDown();
-        },
+        // FIX: single onPanStart/onPanEnd — no conflict with taps, fires once
+        // per gesture. onPanUpdate removed entirely (caused multi-fire swipes).
+        onPanStart: _handlePanStart,
+        onPanEnd: (details) => _handlePanEnd(details, size),
         child: Container(
           color: const Color(0xFF0A0A1A),
           child: Stack(
@@ -659,7 +680,7 @@ class _GameScreenState extends State<GameScreen>
                   opacity: const AlwaysStoppedAnimation(0.6),
                 ),
               ),
-              
+
               // Road
               Positioned(
                 bottom: 0,
@@ -671,13 +692,13 @@ class _GameScreenState extends State<GameScreen>
                   fit: BoxFit.cover,
                 ),
               ),
-              
+
               // Lane dividers
               ..._buildLaneDividers(size, centerX),
-              
+
               // Entities behind player (z > 0)
               ..._buildEntities(centerX, true),
-              
+
               // Player
               Positioned(
                 left: _getPlayerX(_laneWidth, centerX) - 35,
@@ -687,7 +708,7 @@ class _GameScreenState extends State<GameScreen>
                   child: _buildPlayerSprite(),
                 ),
               ),
-              
+
               // Shield effect
               if (_hasShield)
                 Positioned(
@@ -700,26 +721,18 @@ class _GameScreenState extends State<GameScreen>
                     opacity: const AlwaysStoppedAnimation(0.6),
                   ),
                 ),
-              
+
               // Entities in front of player (z < 0)
               ..._buildEntities(centerX, false),
-              
+
               // HUD
               _buildHUD(size),
-              
-              // Bottom Banner Ad
-              if (_bannerAd != null)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: SizedBox(
-                    width: _bannerAd!.size.width.toDouble(),
-                    height: _bannerAd!.size.height.toDouble(),
-                    child: AdWidget(ad: _bannerAd!),
-                  ),
-                ),
-              
+
+              // FIX: Banner ad removed from game screen.
+              // AdWidget cannot live inside a widget tree calling setState
+              // every 16 ms — it crashes AdMob with "already in widget tree".
+              // Banner is shown on the Game Over screen instead.
+
               // Pause button
               Positioned(
                 top: 40,
@@ -749,7 +762,7 @@ class _GameScreenState extends State<GameScreen>
                   ),
                 ),
               ),
-              
+
               // Pause overlay
               if (_paused)
                 Container(
@@ -783,6 +796,11 @@ class _GameScreenState extends State<GameScreen>
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () {
+                            // FIX: stop timer + audio before popping — previously
+                            // the timer kept firing after the screen was gone,
+                            // causing setState on an unmounted widget.
+                            _gameTimer?.cancel();
+                            _audio.stopBgMusic();
                             Navigator.of(context).pop();
                           },
                           style: ElevatedButton.styleFrom(
@@ -794,20 +812,20 @@ class _GameScreenState extends State<GameScreen>
                     ),
                   ),
                 ),
-              
-              // Tutorial overlay for first launch
-              if (_storage.getFirstLaunch() && !_storage.getTutorialCompleted())
-                _buildTutorialOverlay(size),
+
+              // Tutorial overlay
+              // FIX: game timer is NOT started until tutorial is dismissed,
+              // so the player can't die while reading instructions.
+              if (_showingTutorial) _buildTutorialOverlay(size),
             ],
           ),
         ),
       ),
     );
   }
-  
+
   List<Widget> _buildLaneDividers(Size size, double centerX) {
     return [
-      // Left lane divider
       Positioned(
         left: centerX - _laneWidth - 2,
         top: _horizonY,
@@ -827,7 +845,6 @@ class _GameScreenState extends State<GameScreen>
           ),
         ),
       ),
-      // Right lane divider
       Positioned(
         left: centerX + _laneWidth - 2,
         top: _horizonY,
@@ -849,7 +866,7 @@ class _GameScreenState extends State<GameScreen>
       ),
     ];
   }
-  
+
   Widget _buildPlayerSprite() {
     String asset;
     if (_playerState == PlayerState.jumping || _hasJetpack) {
@@ -859,7 +876,7 @@ class _GameScreenState extends State<GameScreen>
     } else {
       asset = 'assets/images/characters/runner_run.png';
     }
-    
+
     return Image.asset(
       asset,
       width: 70,
@@ -867,17 +884,18 @@ class _GameScreenState extends State<GameScreen>
       fit: BoxFit.contain,
     );
   }
-  
+
   List<Widget> _buildEntities(double centerX, bool behindPlayer) {
     final widgets = <Widget>[];
-    
+
     // Obstacles
-    for (final obs in _obstacles.where((o) => behindPlayer ? o.z > 0 : o.z <= 0)) {
+    for (final obs
+        in _obstacles.where((o) => behindPlayer ? o.z > 0 : o.z <= 0)) {
       if (!obs.active) continue;
       final x = _getLaneX(obs.lane, _laneWidth, centerX) - 30;
       final y = _getEntityScreenY(obs.z) - 40;
       final scale = _getEntityScale(obs.z);
-      
+
       String asset;
       switch (obs.type) {
         case ObstacleType.barrier:
@@ -890,7 +908,7 @@ class _GameScreenState extends State<GameScreen>
           asset = 'assets/images/obstacles/drone.png';
           break;
       }
-      
+
       widgets.add(
         Positioned(
           left: x,
@@ -907,14 +925,15 @@ class _GameScreenState extends State<GameScreen>
         ),
       );
     }
-    
+
     // Coins
-    for (final coin in _coinsList.where((c) => behindPlayer ? c.z > 0 : c.z <= 0)) {
+    for (final coin
+        in _coinsList.where((c) => behindPlayer ? c.z > 0 : c.z <= 0)) {
       if (coin.collected) continue;
       final x = _getLaneX(coin.lane, _laneWidth, centerX) - 15;
       final y = _getEntityScreenY(coin.z) - 15;
       final scale = _getEntityScale(coin.z);
-      
+
       widgets.add(
         Positioned(
           left: x,
@@ -931,14 +950,15 @@ class _GameScreenState extends State<GameScreen>
         ),
       );
     }
-    
+
     // Power-ups
-    for (final pu in _powerUps.where((p) => behindPlayer ? p.z > 0 : p.z <= 0)) {
+    for (final pu
+        in _powerUps.where((p) => behindPlayer ? p.z > 0 : p.z <= 0)) {
       if (!pu.active) continue;
       final x = _getLaneX(pu.lane, _laneWidth, centerX) - 20;
       final y = _getEntityScreenY(pu.z) - 20;
       final scale = _getEntityScale(pu.z);
-      
+
       String asset;
       switch (pu.type) {
         case PowerUpType.magnet:
@@ -954,7 +974,7 @@ class _GameScreenState extends State<GameScreen>
           asset = 'assets/images/powerups/multiplier.png';
           break;
       }
-      
+
       widgets.add(
         Positioned(
           left: x,
@@ -971,10 +991,10 @@ class _GameScreenState extends State<GameScreen>
         ),
       );
     }
-    
+
     return widgets;
   }
-  
+
   Widget _buildHUD(Size size) {
     return SafeArea(
       child: Padding(
@@ -984,7 +1004,8 @@ class _GameScreenState extends State<GameScreen>
           children: [
             // Score
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(12),
@@ -1014,12 +1035,13 @@ class _GameScreenState extends State<GameScreen>
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             // Coins
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(10),
@@ -1044,17 +1066,26 @@ class _GameScreenState extends State<GameScreen>
                 ],
               ),
             ),
-            
+
             const Spacer(),
-            
+
             // Power-up indicators
             if (_hasMagnet || _hasShield || _hasMultiplier || _hasJetpack)
               Row(
                 children: [
-                  if (_hasJetpack) _buildPowerUpIndicator('assets/images/powerups/jetpack.png', _jetpackTime),
-                  if (_hasMagnet) _buildPowerUpIndicator('assets/images/powerups/magnet.png', _magnetTime),
-                  if (_hasShield) _buildPowerUpIndicator('assets/images/powerups/shield.png', _shieldTime),
-                  if (_hasMultiplier) _buildPowerUpIndicator('assets/images/powerups/multiplier.png', _multiplierTime),
+                  if (_hasJetpack)
+                    _buildPowerUpIndicator(
+                        'assets/images/powerups/jetpack.png', _jetpackTime),
+                  if (_hasMagnet)
+                    _buildPowerUpIndicator(
+                        'assets/images/powerups/magnet.png', _magnetTime),
+                  if (_hasShield)
+                    _buildPowerUpIndicator(
+                        'assets/images/powerups/shield.png', _shieldTime),
+                  if (_hasMultiplier)
+                    _buildPowerUpIndicator(
+                        'assets/images/powerups/multiplier.png',
+                        _multiplierTime),
                 ],
               ),
           ],
@@ -1062,7 +1093,7 @@ class _GameScreenState extends State<GameScreen>
       ),
     );
   }
-  
+
   Widget _buildPowerUpIndicator(String asset, double time) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
@@ -1070,7 +1101,8 @@ class _GameScreenState extends State<GameScreen>
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.6),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF00F0FF).withOpacity(0.5)),
+        border:
+            Border.all(color: const Color(0xFF00F0FF).withOpacity(0.5)),
       ),
       child: Column(
         children: [
@@ -1084,7 +1116,7 @@ class _GameScreenState extends State<GameScreen>
       ),
     );
   }
-  
+
   Widget _buildTutorialOverlay(Size size) {
     return Container(
       color: Colors.black.withOpacity(0.8),
@@ -1115,8 +1147,11 @@ class _GameScreenState extends State<GameScreen>
             const SizedBox(height: 30),
             ElevatedButton(
               onPressed: () {
+                // FIX: mark tutorial done + first launch done, THEN start game
                 _storage.setTutorialCompleted(true);
-                setState(() {});
+                _storage.setFirstLaunch(false);
+                setState(() => _showingTutorial = false);
+                _startGame();
               },
               child: const Text('GOT IT!'),
             ),
@@ -1125,7 +1160,7 @@ class _GameScreenState extends State<GameScreen>
       ),
     );
   }
-  
+
   Widget _buildTutorialItem(String title, String desc) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/storage_service.dart';
 import '../services/audio_service.dart';
+import '../widgets/runner_painter.dart';
 import 'game_over_screen.dart';
 
 enum Lane { left, center, right }
@@ -871,20 +872,16 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Widget _buildPlayerSprite() {
-    String asset;
-    if (_playerState == PlayerState.jumping || _hasJetpack) {
-      asset = 'assets/images/characters/runner_jump.png';
-    } else if (_playerState == PlayerState.sliding) {
-      asset = 'assets/images/characters/runner_slide.png';
-    } else {
-      asset = 'assets/images/characters/runner_run.png';
-    }
-
-    return Image.asset(
-      asset,
+    return RunnerWidget(
+      playerState: _playerState,
+      distance: _distance,
+      gameSpeed: _gameSpeed,
+      jumpProgress: _jumpProgress,
+      slideProgress: _slideProgress,
+      hasJetpack: _hasJetpack,
+      jetpackTime: _jetpackTime,
       width: 70,
-      height: 100,
-      fit: BoxFit.contain,
+      height: 110,
     );
   }
 
